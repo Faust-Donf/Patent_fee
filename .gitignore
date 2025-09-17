@@ -1,0 +1,12 @@
+# Virtual environment
+.venv/
+
+# Python cache
+__pycache__/
+*.pyc
+
+# IDE / Tool specific
+.codebuddy/
+
+# Application specific
+state.json
