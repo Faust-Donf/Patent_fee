@@ -1,4 +1,4 @@
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Tuple
 import pandas as pd
 from datetime import datetime
 
@@ -82,8 +82,15 @@ def normalize_baiten_item(item: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
-def normalize_baiten_payload(payload: Dict[str, Any]) -> List[Dict[str, Any]]:
-    """Extract and normalize list of items from Baiten API payload."""
+def normalize_baiten_payload(payload: Dict[str, Any]) -> Tuple[List[Dict[str, Any]], Optional[int]]:
+    """Extract and normalize list of items from Baiten API payload.
+    Also extracts the total number of records if available.
+    
+    Returns:
+        A tuple containing:
+        - A list of normalized patent records.
+        - An integer with the total number of records, or None if not found.
+    """
     items = []
     # New style: documents list with nested field_values
     docs = payload.get("documents")
@@ -96,11 +103,34 @@ def normalize_baiten_payload(payload: Dict[str, Any]) -> List[Dict[str, Any]]:
             if isinstance(val, list):
                 items = val
                 break
+            # Handle nested structures like { "data": { "list": [...] } }
             if isinstance(val, dict) and isinstance(val.get("list"), list):
                 items = val.get("list")
                 break
 
-    return [normalize_baiten_item(x) for x in items]
+    # Try to find the total count
+    total_count = None
+    for key in ("total", "total_count", "totalRecords", "totalHits", "count", "totalNum"):
+        if key in payload:
+            try:
+                total_count = int(payload[key])
+                break
+            except (ValueError, TypeError):
+                continue
+    
+    # Check in nested 'data' dictionary as well
+    if total_count is None and isinstance(payload.get("data"), dict):
+        data_dict = payload["data"]
+        for key in ("total", "total_count", "totalRecords", "totalHits", "count", "totalNum"):
+            if key in data_dict:
+                try:
+                    total_count = int(data_dict[key])
+                    break
+                except (ValueError, TypeError):
+                    continue
+
+    normalized_items = [normalize_baiten_item(x) for x in items]
+    return normalized_items, total_count
 
 
 def build_dataframe(records: List[Dict[str, Any]]) -> pd.DataFrame:

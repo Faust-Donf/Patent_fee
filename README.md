@@ -1,36 +1,33 @@
-# 专利检索与监控（Streamlit）
+# 中国专利检索与年费监控平台
 
-功能概览：
-- 专利统计列表字段：公司名称、专利名称、专利类型、专利号、申请时间、授权时间、发明人、当前法律状态、最临近的一次缴纳年费截止日期。
-- 筛选：公司名称、专利类型、法律状态、发明人关键词、申请日期区间。
-- 导出：一键导出 Excel（.xlsx）。
-- 仪表盘：按专利类型分布饼图、公司-类型结构树（Treemap）、按申请年份数量趋势柱状图。
-- 智能检索：集成佰腾接口调用（需提供 App Key/Secret）。
+**项目链接:**
+- **GitHub 仓库:** [https://github.com/Faust-Donf/Patent_fee.git](https://github.com/Faust-Donf/Patent_fee.git)
+- **在线应用:** `[请在此处替换为您的 Streamlit 应用链接]`
 
-## 快速开始
+---
 
-1. 安装依赖（建议使用虚拟环境）：
-```bash
-pip install -r requirements.txt
-```
+### 项目简介
 
-2. 运行：
-```bash
-streamlit run app.py
-```
+这是一个独立的 Web 应用，旨在为用户提供一站式的中国专利信息检索、筛选、可视化分析及年费查询功能。项目通过整合第三方 API 和 Web 自动化技术，解决了专利信息分散、年费查询繁琐的问题。
 
-3. 在左侧填写 `App Key` 与 `App Secret`，输入公司或关键词，点击“开始检索”。
+### 核心功能
 
-> 也可通过环境变量提供：
-- `BAITEN_APP_KEY`
-- `BAITEN_APP_SECRET`
+- **专利检索系统:** 对接第三方专利 API，实现基于关键词的中国专利数据实时检索与展示。
 
-## 代码结构
-- `app.py`：Streamlit UI（检索、筛选、导出、可视化）。
-- `baiten_api.py`：佰腾搜索 API 客户端与签名逻辑。
-- `data_utils.py`：结果规范化与 DataFrame 构建。
-- `requirements.txt`：依赖清单。
+- **年费智能查询:** 利用 Playwright 自动化爬取国家知识产权局（CNIPA）网站，实现精确、自动化的专利年费状态查询。通过对专利号进行预处理，有效提高了查询成功率。
 
-## 注意
-- 佰腾接口的字段名可能与示例不同，`data_utils.normalize_baiten_item` 中已做多候选字段映射，可按实际返回调整。
-- 签名规则按提供信息采用 `md5("2025" + len(query) + app_secret)`，并自动尝试 UTF-8/GBK × 小写/大写四种组合；若接入失败，请根据实际开放平台文档修正。
+- **交互式数据看板:** 使用 Streamlit 构建动态用户界面，支持多维度数据筛选（如公司、专利类型、法律状态等），并通过 Plotly 生成交互式图表（如饼图、树状图、条形图）进行数据可视化。
+
+- **状态保持与优化:** 通过 Streamlit 的 `session_state` 机制，优化应用交互逻辑，确保在多标签页切换时用户的检索结果得以保留，显著提升了用户体验。
+
+- **便捷操作:** 实现“一键查询全部”功能，批量处理检索到的所有专利；支持将筛选后的数据和年费查询结果一键导出为 Excel 文件。
+
+### 技术栈
+
+- **后端/核心:** Python
+- **前端/UI:** Streamlit
+- **数据处理与分析:** Pandas, NumPy
+- **Web 自动化与爬虫:** Playwright
+- **数据可视化:** Plotly
+- **API 交互:** Requests
+- **版本控制与部署:** Git, GitHub, Streamlit Community Cloud

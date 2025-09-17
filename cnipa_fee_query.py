@@ -257,20 +257,25 @@ async def _ensure_login_async():
 def ensure_login_interactive():
     asyncio.run(_ensure_login_async())
 
-async def _query_due_fees_async(app_no: str, headful: bool) -> List[Dict]:
+async def _query_due_fees_async(app_no: str, headful: bool, storage_state: Optional[dict] = None) -> List[Dict]:
     from playwright.async_api import async_playwright
+    
+    # 如果没有传入 state，则尝试从 state.json 文件加载
+    if storage_state is None:
+        if not STATE_FILE.exists():
+            raise RuntimeError("未找到登录状态文件 (state.json)。")
+        state_to_use = str(STATE_FILE)
+    else:
+        state_to_use = storage_state
+
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=not headful)
-        if not STATE_FILE.exists():
-            await browser.close()
-            raise RuntimeError("未检测到 state.json，请先登录。")
-
         ctx = await browser.new_context(
             locale="zh-CN",
             user_agent=("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
                         "(KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36"),
             viewport={"width": 1366, "height": 900},
-            storage_state=str(STATE_FILE)
+            storage_state=state_to_use
         )
         page = await ctx.new_page()
         page.set_default_timeout(45000)
@@ -279,9 +284,11 @@ async def _query_due_fees_async(app_no: str, headful: bool) -> List[Dict]:
         if not await _open_roots(page):
             await browser.close()
             raise RuntimeError("无法打开入口页")
-        if "登录" in (await page.inner_text("body")):
+        
+        body_text = await page.inner_text("body")
+        if "登录" in body_text and "退出" not in body_text:
             await browser.close()
-            raise RuntimeError("登录态失效，请在侧边栏重新登录。")
+            raise RuntimeError("登录态失效，请重新生成 state.json 文件并上传。")
 
         # 导航到费用查询
         if not await _goto_fee_query(page):
@@ -307,7 +314,7 @@ async def _query_due_fees_async(app_no: str, headful: bool) -> List[Dict]:
 
         # 等待结果或暂无数据
         try:
-            await page.wait_for_selector("table, .el-table, .ant-table", state="visible", timeout=20000)
+            await page.wait_for_selector("table, .el-table, .ant-table, #cp_result_table", state="visible", timeout=20000)
         except PWTimeout:
             try:
                 await page.get_by_text("暂无数据").first.wait_for(timeout=5000)
@@ -322,9 +329,9 @@ async def _query_due_fees_async(app_no: str, headful: bool) -> List[Dict]:
         await browser.close()
         return rows
 
-def query_due_fees(app_no: str, headful: bool = True) -> List[Dict]:
+def query_due_fees(app_no: str, headful: bool = True, storage_state: Optional[dict] = None) -> List[Dict]:
     """返回 [{'费用种类':..., '缴费期限届满日':..., '金额':...}, ...]"""
-    return asyncio.run(_query_due_fees_async(app_no, headful=headful))
+    return asyncio.run(_query_due_fees_async(app_no, headful=headful, storage_state=storage_state))
 
 def has_login_state() -> bool:
     return STATE_FILE.exists()
