@@ -28,7 +28,15 @@ ROOTS = [
     "https://interactive.cponline.cnipa.gov.cn/od",
 ]
 BASE = Path(__file__).parent
-STATE_FILE = BASE / "state.json"
+# 允许通过环境变量覆盖 state.json 路径（绝对或相对）
+_custom_state = os.getenv("CNIPA_STATE_FILE")
+if _custom_state:
+    sf = Path(_custom_state).expanduser()
+    if not sf.is_absolute():
+        sf = (Path.cwd() / sf).resolve()
+    STATE_FILE = sf
+else:
+    STATE_FILE = BASE / "state.json"
 
 # ------- 选择器 -------
 MENU_PAY = ['text=缴费服务','a:has-text("缴费服务")','button:has-text("缴费服务")','text=/缴费\\s*服务/']
@@ -334,4 +342,4 @@ def query_due_fees(app_no: str, headful: bool = True, storage_state: Optional[di
     return asyncio.run(_query_due_fees_async(app_no, headful=headful, storage_state=storage_state))
 
 def has_login_state() -> bool:
-    return STATE_FILE.exists()
+    return Path(STATE_FILE).exists()

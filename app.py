@@ -11,17 +11,28 @@ import plotly.express as px
 
 from baiten_api import search_baiten_post
 from data_utils import normalize_baiten_payload, build_dataframe, REQUIRED_COLUMNS
+from fee_monitor import render_monitor_management_ui, add_fees_to_monitor
 
 try:
     from cnipa_fee_query import query_due_fees, ensure_login_interactive
     CNIPA_AVAILABLE = True
-except ImportError:
+except ImportError as e:
     CNIPA_AVAILABLE = False
+    import_error_msg = str(e)
     def query_due_fees(*args, **kwargs):
-        st.error("Playwright-related function not available.")
+        st.error(f"年费查询功能不可用，导入错误: {import_error_msg}")
         return []
     def ensure_login_interactive():
-        st.error("Playwright-related function not available.")
+        st.error(f"年费查询功能不可用，导入错误: {import_error_msg}")
+        pass
+except Exception as e:
+    CNIPA_AVAILABLE = False
+    import_error_msg = str(e)
+    def query_due_fees(*args, **kwargs):
+        st.error(f"年费查询功能不可用，未知错误: {import_error_msg}")
+        return []
+    def ensure_login_interactive():
+        st.error(f"年费查询功能不可用，未知错误: {import_error_msg}")
         pass
 
 st.set_page_config(page_title="企南针 · 中国专利检索与监控", layout="wide")
@@ -190,38 +201,35 @@ def _hero() -> Dict[str, Any]:
 
 def run_fee_query(df: pd.DataFrame, selected_indices: List[Any], storage_state: dict):
     progress_bar = st.progress(0)
-    fee_results = []
-    
+    fee_results: List[Dict[str, Any]] = []
     for i, idx in enumerate(selected_indices):
         patent = df.loc[idx]
         app_no_raw = patent['专利号']
         app_no = re.sub(r'\D', '', app_no_raw)
-        
         try:
             st.write(f"正在查询 {app_no_raw} (处理后: {app_no})...")
             fees = query_due_fees(app_no, headful=False, storage_state=storage_state)
-            
             for fee in fees:
                 fee_results.append({
                     '专利号': app_no_raw,
                     '专利名称': patent['专利名称'],
                     '公司名称': patent['公司名称'],
+                    '当前法律状态': patent.get('当前法律状态', ''),
                     '费用种类': fee['费用种类'],
                     '缴费期限届满日': fee['缴费期限届满日'],
                     '金额': fee['金额']
                 })
-            
             progress_bar.progress((i + 1) / len(selected_indices))
         except Exception as e:
             st.error(f"查询 {app_no_raw} 失败：{e}")
-    
-    if fee_results:
-        st.success(f"查询完成，共获得 {len(fee_results)} 条年费记录")
-        fee_df = pd.DataFrame(fee_results)
-        st.dataframe(fee_df, use_container_width=True, hide_index=True)
-        export_buttons(fee_df, filename="年费查询结果.xlsx", sheet_name="年费查询结果")
+    # 写入 session，不渲染；让上层统一展示
+    st.session_state.fee_query_results = fee_results
+    st.session_state.fee_query_patent_info = df.loc[selected_indices].to_dict('records') if len(selected_indices) == 1 else None
+    st.session_state.fee_query_just_updated = True
+    if not fee_results:
+        st.session_state.fee_query_empty = True
     else:
-        st.warning("未查询到任何年费信息")
+        st.session_state.fee_query_empty = False
 
 def fee_query_tab_content():
     st.markdown("<div class='card'>", unsafe_allow_html=True)
@@ -273,6 +281,23 @@ def fee_query_tab_content():
             
             if selected_patents and st.button("查询选中专利年费"):
                 run_fee_query(df, selected_patents, login_state)
+            # 统一展示最近一次查询结果
+            if st.session_state.get('fee_query_results') is not None:
+                st.write("---")
+                fee_results = st.session_state.fee_query_results
+                if st.session_state.get('fee_query_empty'):
+                    st.warning("未查询到任何年费信息")
+                elif fee_results:
+                    if st.session_state.get('fee_query_just_updated'):
+                        st.success(f"查询完成，共获得 {len(fee_results)} 条年费记录")
+                    fee_df = pd.DataFrame(fee_results)
+                    st.dataframe(fee_df, use_container_width=True, hide_index=True)
+                    export_buttons(fee_df, filename="年费查询结果.xlsx", sheet_name="年费查询结果")
+                    try:
+                        add_fees_to_monitor(fee_results, patent_info=(st.session_state.fee_query_patent_info[0] if st.session_state.fee_query_patent_info else None))
+                    except Exception as e:
+                        st.warning(f"添加监控界面渲染失败: {e}")
+                st.session_state.fee_query_just_updated = False
         else:
             st.info("请先在“检索与列表”标签页中进行专利检索。")
 
@@ -298,6 +323,10 @@ def main():
         st.session_state.cnipa_login_state = None
     if "current_query" not in st.session_state:
         st.session_state.current_query = ""
+    if "fee_query_results" not in st.session_state:
+        st.session_state.fee_query_results = []
+    if "fee_query_patent_info" not in st.session_state:
+        st.session_state.fee_query_patent_info = None
 
     local_login_sidebar()
     st.title("企南针 · 中国专利检索与监控")
@@ -350,7 +379,7 @@ def main():
             st.info(f"API 报告总共有 {total_count_api} 条专利。")
 
     # --- 页面渲染 ---
-    tabs = st.tabs(["检索与列表", "年费查询", "仪表盘"])
+    tabs = st.tabs(["检索与列表", "年费查询", "年费监控", "仪表盘"])
     df_from_session = st.session_state.df_search_results
 
     with tabs[0]:
@@ -369,6 +398,11 @@ def main():
         fee_query_tab_content()
 
     with tabs[2]:
+        st.markdown("<div class='card'>", unsafe_allow_html=True)
+        render_monitor_management_ui()
+        st.markdown("</div>", unsafe_allow_html=True)
+
+    with tabs[3]:
         if df_from_session is not None:
             st.markdown("<div class='card'>", unsafe_allow_html=True)
             dashboard(df_from_session)

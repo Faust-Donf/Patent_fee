@@ -31,3 +31,87 @@
 - **数据可视化:** Plotly
 - **API 交互:** Requests
 - **版本控制与部署:** Git, GitHub, Streamlit Community Cloud
+ - **版本控制与部署:** Git, GitHub, Streamlit Community Cloud
+
+---
+
+## 部署指南（Ubuntu 简要版）
+
+### 1. 环境准备
+```bash
+sudo apt update && sudo apt -y upgrade
+sudo apt -y install python3 python3-venv python3-pip git curl build-essential
+```
+
+### 2. 获取代码 & 安装依赖
+```bash
+git clone https://github.com/Faust-Donf/Patent_fee.git
+cd Patent_fee
+python3 -m venv .venv
+source .venv/bin/activate
+pip install --upgrade pip
+pip install -r requirements.txt
+python -m playwright install chromium
+```
+
+### 3. 准备 CNIPA 登录状态文件 `state.json`
+在本地通过交互式登录生成后上传。也可以通过环境变量指定路径：
+```bash
+export CNIPA_STATE_FILE=/opt/patent_fee/state/state.json
+```
+权限建议：
+```bash
+chmod 600 state.json
+```
+
+### 4. 运行应用
+```bash
+streamlit run app.py --server.address=0.0.0.0 --server.port=8501
+```
+
+### 5. systemd 示例
+`/etc/systemd/system/patent_fee.service`
+```
+[Unit]
+Description=Patent Fee Streamlit
+After=network.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/opt/patent_fee
+Environment=CNIPA_STATE_FILE=/opt/patent_fee/state/state.json
+Environment=PATH=/opt/patent_fee/.venv/bin
+ExecStart=/opt/patent_fee/.venv/bin/streamlit run app.py --server.address=0.0.0.0 --server.port=8501
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+```
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable --now patent_fee
+```
+
+### 6. 验证 `state.json`
+```bash
+python verify_state.py /path/to/state.json
+```
+
+### 7. Nginx 反向代理（可选）
+```nginx
+server {
+	listen 80;
+	server_name your.domain.com;
+	location / { proxy_pass http://127.0.0.1:8501/; }
+}
+```
+
+### 8. 关键环境变量
+| 变量名 | 说明 | 示例 |
+|--------|------|------|
+| CNIPA_STATE_FILE | 指定 state.json 路径 | /opt/patent_fee/state/state.json |
+| CNIPA_USER / CNIPA_PASS | 自动脚本生成 state.json 时使用（可选） | 138*****/secret |
+
+---
