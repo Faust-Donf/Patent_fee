@@ -295,8 +295,13 @@ async def _query_due_fees_async(app_no: str, headful: bool, storage_state: Optio
         
         body_text = await page.inner_text("body")
         if "登录" in body_text and "退出" not in body_text:
+        # 打印页面 HTML
+            print("========== DEBUG: 登录失败时的页面 HTML ==========")
+            print(body_text[:2000])  # 只打印前 2000 字符，防止太长撑爆日志
+            print("================================================")
             await browser.close()
             raise RuntimeError("登录态失效，请重新生成 state.json 文件并上传。")
+
 
         # 导航到费用查询
         if not await _goto_fee_query(page):
