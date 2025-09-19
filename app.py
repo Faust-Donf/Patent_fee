@@ -3,6 +3,7 @@ import os
 import re
 import json
 import math
+from pathlib import Path
 from typing import List, Dict, Any, Tuple, Optional
 
 import pandas as pd
@@ -13,7 +14,9 @@ from baiten_api import search_baiten_post
 from data_utils import normalize_baiten_payload, build_dataframe, REQUIRED_COLUMNS
 from fee_monitor import render_monitor_management_ui, add_fees_to_monitor
 
+cnipa_module = None
 try:
+    import cnipa_fee_query as cnipa_module
     from cnipa_fee_query import query_due_fees, ensure_login_interactive
     CNIPA_AVAILABLE = True
 except ImportError as e:
@@ -40,7 +43,66 @@ st.set_page_config(page_title="企南针 · 中国专利检索与监控", layout
 # 固定密钥
 APP_KEY = "n3krd7sx4vks2fip"
 APP_SECRET = "5df54358-2885-4cde-9254-e7916cecbe69"
+# 固定登录状态（直接写入，无需上传 state.json）
+def _load_persisted_cnipa_state() -> Optional[Dict[str, Any]]:
+    """尝试从磁盘加载持久化的 CNIPA 登录状态，成功则返回字典。"""
+    if not CNIPA_AVAILABLE or cnipa_module is None:
+        return None
+    state_path = getattr(cnipa_module, 'STATE_FILE', Path(__file__).with_name('state.json'))
+    try:
+        with open(state_path, 'r', encoding='utf-8') as f:
+            state = json.load(f)
+    except FileNotFoundError:
+        return None
+    except Exception as exc:
+        print(f'[CNIPA] 加载 state.json 失败: {exc}')
+        return None
+    if isinstance(state, dict) and state.get('cookies') and state.get('origins'):
+        return state
+    return None
 
+FIXED_CNIPA_LOGIN_STATE = {
+    "cookies": [
+        {
+            "name": "SESSION",
+            "value": "e75e00b3-223c-47de-9d89-569f26447db2",
+            "domain": "tysf.cponline.cnipa.gov.cn",
+            "path": "/am/",
+            "expires": -1,
+            "httpOnly": True,
+            "secure": False,
+            "sameSite": "Lax"
+        },
+        {
+            "name": "SESSION",
+            "value": "NWNmZGIwZTgtZTU1MC00NmI3LWFlNjgtNmJjOTYwOWI5ZDQx",
+            "domain": "sso.cponline.cnipa.gov.cn",
+            "path": "/",
+            "expires": -1,
+            "httpOnly": True,
+            "secure": True,
+            "sameSite": "Lax"
+        }
+    ],
+    "origins": [
+        {
+            "origin": "https://tysf.cponline.cnipa.gov.cn",
+            "localStorage": [
+                {"name": "pro__SIDEBAR_TYPE", "value": "{\"value\":true,\"expire\":null}"},
+                {"name": "pro__DEFAULT_COLOR", "value": "{\"value\":\"#F56C6C\",\"expire\":null}"},
+                {"name": "slider", "value": "slider-dd7dc94a-b9f0-47fb-8219-4d95ee52a88c"},
+                {"name": "pro__DEFAULT_CONTENT_WIDTH_TYPE", "value": "{\"value\":\"Fluid\",\"expire\":null}"},
+                {"name": "pro__DEFAULT_FIXED_HEADER", "value": "{\"value\":false,\"expire\":null}"},
+                {"name": "pro__DEFAULT_THEME", "value": "{\"value\":\"dark\",\"expire\":null}"},
+                {"name": "pro__DEFAULT_LAYOUT_MODE", "value": "{\"value\":\"topmenu\",\"expire\":null}"},
+                {"name": "pro__DEFAULT_FIXED_SIDEMENU", "value": "{\"value\":false,\"expire\":null}"},
+                {"name": "pro__DEFAULT_FIXED_HEADER_HIDDEN", "value": "{\"value\":false,\"expire\":null}"},
+                {"name": "point", "value": "point-dd7dc94a-b9f0-47fb-8219-4d95ee52a88c"},
+                {"name": "pro__DEFAULT_URL_TYPE", "value": "{\"value\":\"2\",\"expire\":null}"}
+            ]
+        }
+    ]
+}
 
 @st.cache_data(show_spinner=False)
 def _search_and_normalize(app_key: str, app_secret: str, query: str, extra_params: Dict[str, Any]) -> Tuple[pd.DataFrame, Optional[int]]:
@@ -320,7 +382,8 @@ def main():
     if "df_search_results" not in st.session_state:
         st.session_state.df_search_results = None
     if "cnipa_login_state" not in st.session_state:
-        st.session_state.cnipa_login_state = None
+        persisted_state = _load_persisted_cnipa_state()
+        st.session_state.cnipa_login_state = persisted_state
     if "current_query" not in st.session_state:
         st.session_state.current_query = ""
     if "fee_query_results" not in st.session_state:
