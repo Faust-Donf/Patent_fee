@@ -296,7 +296,7 @@ async def _query_due_fees_async(app_no: str, headful: bool, storage_state: Optio
         body_text = await page.inner_text("body")
         if "登录" in body_text and "退出" not in body_text:
             await browser.close()
-            raise RuntimeError(body_text[:2000] + "登录态失效，请重新生成 state.json 文件并上传。")
+            raise RuntimeError(body_text[:2000])
 
 
         # 导航到费用查询
